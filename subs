@@ -1,0 +1,131 @@
+
+subscriptionID = subscriptions.get("subscription_id");
+organizationID = organization.get("organization_id");
+// subscription_id = subscriptions.getJSON("subscription_id");
+up_MP = Map();
+subscriptions_details = zoho.subscriptions.retrieve("subscriptions",organizationID,subscriptionID,"z");
+info subscriptions_details;
+subs = subscriptions_details.getJSON("subscription");
+customer_id = subs.getJSON("customer_id");
+info customer_id;
+customer = subs.getJSON("customer");
+zcrm_account_id = customer.getJSON("zcrm_account_id");
+info zcrm_account_id;
+last_billing_at = subs.getJSON("last_billing_at");
+next_billing_at = subs.getJSON("next_billing_at");
+plan1 = subs.getJSON("plan");
+if(!plan1.isNull())
+{
+	plan_code = plan1.getJSON("plan_code");
+	plan = plan1.getJSON("name");
+}
+activated_at = subs.getJSON("activated_at");
+coupon = subs.getJSON("coupon");
+status = subs.getJSON("status");
+if(!coupon.isNull())
+{
+	coupon_code = coupon.getJSON("coupon_code");
+	up_MP.put("Promo_Code",coupon_code);
+}
+up_MP.put("Activation_Date",activated_at);
+up_MP.put("Subscription_Status",status);
+up_MP.put("Plan_Name",plan);
+up_MP.put("Plan_Code",plan_code);
+up_MP.put("Last_Billed_Date",last_billing_at);
+up_MP.put("Next_Billing_Date",next_billing_at);
+//Paid
+trans = invokeurl
+[
+	url :"https://subscriptions.zoho.com/api/v1/invoices?filter_by=Status.Paid&customer_id=" + customer_id
+	type :GET
+	connection:"z_crm"
+];
+trans_code = trans.get("code");
+if(trans_code == 0)
+{
+	tran_count = 0;
+	cur_amount = 0;
+	curr_lvl = 0;
+	invoices = trans.getJSON("invoices");
+	//info invoices;
+	if(!invoices.isNull())
+	{
+		for each  tr in invoices
+		{
+			tran_count = tran_count + 1;
+			invoice_id = tr.getJSON("invoice_id");
+			inv = invokeurl
+			[
+				url :"https://subscriptions.zoho.com/api/v1/invoices/" + invoice_id
+				type :GET
+				connection:"z_crm"
+			];
+			if(tran_count == 1)
+			{
+				// invoice_items =  inv.get("invoice").getJSON("invoice_items");
+				// for each itm in invoice_items
+				// {
+				// name = itm.getJSON("name");
+				// info"first"+name;
+				// break;
+				// }
+				//info plan;
+				if(plan.containsIgnoreCase("BASIC "))
+				{
+					curr_lvl = 1;
+				}
+				if(plan.containsIgnoreCase("PRO "))
+				{
+					curr_lvl = 2;
+				}
+				if(plan.containsIgnoreCase("PLUS "))
+				{
+					curr_lvl = 3;
+				}
+			}
+			if(tran_count != 1)
+			{
+				lvl = 0;
+				invoice_items = inv.get("invoice").getJSON("invoice_items");
+				for each  itm in invoice_items
+				{
+					name = itm.getJSON("name");
+					break;
+				}
+				if(name.containsIgnoreCase("BASIC "))
+				{
+					lvl = 1;
+				}
+				if(name.containsIgnoreCase("PRO "))
+				{
+					lvl = 2;
+				}
+				if(name.containsIgnoreCase("PLUS "))
+				{
+					lvl = 3;
+				}
+				//   info name;
+				//   info curr_lvl < lvl;
+				if(curr_lvl > lvl)
+				{
+					up_MP.put("Level","Upgrade");
+				}
+				else if(curr_lvl < lvl)
+				{
+					up_MP.put("Level","Downgrade");
+				}
+				else
+				{
+					up_MP.put("Level","same");
+				}
+			}
+		}
+	}
+}
+info up_MP;
+info 1;
+info zcrm_account_id;
+if(zcrm_account_id.isNull() == false)
+{
+	info zoho.crm.updateRecord("Accounts",zcrm_account_id.toLong(),up_MP);
+}
